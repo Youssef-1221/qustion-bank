@@ -1,0 +1,6 @@
+{
+  "name": "CourseBank",
+  "description": "AI-powered university study and comprehensive question bank platform that transforms lecture notes, slides, PDFs, and scanned materials into structured exam preparation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

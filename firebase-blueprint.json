@@ -1,0 +1,280 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated student profile stored privately per user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "photoUrl": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "email", "createdAt", "updatedAt"]
+    },
+    "Subject": {
+      "title": "Subject",
+      "description": "Independent university course workspace containing materials, content map, question bank, and study progress.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "courseCode": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "professorName": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 500 },
+        "colorAccent": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "analysisStatus": { "type": "string", "enum": ["idle", "analyzing", "completed", "error"] },
+        "analysisSummary": { "type": "string", "maxLength": 2500 },
+        "materialCount": { "type": "integer" },
+        "questionCount": { "type": "integer" },
+        "answeredCount": { "type": "integer" },
+        "correctCount": { "type": "integer" },
+        "lastStudiedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "courseCode",
+        "colorAccent",
+        "analysisStatus",
+        "materialCount",
+        "questionCount",
+        "answeredCount",
+        "correctCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CourseMaterial": {
+      "title": "CourseMaterial",
+      "description": "Uploaded course material metadata and extraction summary.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "subjectId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fileName": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "fileType": { "type": "string", "enum": ["pdf", "docx", "pptx", "txt", "image"] },
+        "mimeType": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "fileSize": { "type": "integer" },
+        "folder": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "storagePath": { "type": "string", "maxLength": 500 },
+        "extractedCharCount": { "type": "integer" },
+        "pageCount": { "type": "integer" },
+        "chunkCount": { "type": "integer" },
+        "ocrUsed": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["uploaded", "extracted", "analyzed", "error"] },
+        "summary": { "type": "string", "maxLength": 2500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "subjectId",
+        "fileName",
+        "fileType",
+        "mimeType",
+        "fileSize",
+        "folder",
+        "extractedCharCount",
+        "pageCount",
+        "chunkCount",
+        "ocrUsed",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MaterialChunk": {
+      "title": "MaterialChunk",
+      "description": "Extracted plain-text segment of a course material stored in Firestore for reliable persistence and re-analysis.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "subjectId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "materialId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "chunkIndex": { "type": "integer" },
+        "pageRange": { "type": "string", "maxLength": 100 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 250000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "subjectId", "materialId", "chunkIndex", "text", "createdAt"]
+    },
+    "ContentMapNode": {
+      "title": "ContentMapNode",
+      "description": "Structured course content map unit representing a lecture or chapter and its concepts, definitions, formulas, and examples.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "subjectId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "lecture": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "topic": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "subtopics": { "type": "array" },
+        "definitions": { "type": "array" },
+        "formulas": { "type": "array" },
+        "examples": { "type": "array" },
+        "sourceFiles": { "type": "array" },
+        "orderIndex": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "subjectId",
+        "lecture",
+        "topic",
+        "subtopics",
+        "definitions",
+        "formulas",
+        "examples",
+        "sourceFiles",
+        "orderIndex",
+        "createdAt"
+      ]
+    },
+    "QuestionItem": {
+      "title": "QuestionItem",
+      "description": "Structured exam question traceable to professor materials, lecture slides, or AI gap synthesis.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "subjectId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "lecture": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "topic": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "type": { "type": "string", "enum": ["mcq", "true_false", "complete", "short_answer", "essay", "numerical", "matching"] },
+        "difficulty": { "type": "string", "enum": ["Easy", "Medium", "Hard"] },
+        "source": { "type": "string", "enum": ["Professor", "Lecture", "AI Generated"] },
+        "sourceRef": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "options": { "type": "array" },
+        "matchingPairs": { "type": "array" },
+        "correctAnswer": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "explanation": { "type": "string", "minLength": 1, "maxLength": 6000 },
+        "figureUrl": { "type": "string", "maxLength": 500 },
+        "figureCaption": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "subjectId",
+        "lecture",
+        "topic",
+        "type",
+        "difficulty",
+        "source",
+        "sourceRef",
+        "prompt",
+        "options",
+        "matchingPairs",
+        "correctAnswer",
+        "explanation",
+        "createdAt"
+      ]
+    },
+    "QuestionAttempt": {
+      "title": "QuestionAttempt",
+      "description": "Student answer state and mastery tracking per question.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "subjectId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "questionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "lecture": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "topic": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "questionType": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "userAnswer": { "type": "string", "maxLength": 4000 },
+        "isCorrect": { "type": "boolean" },
+        "attemptsCount": { "type": "integer" },
+        "incorrectCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "subjectId",
+        "questionId",
+        "lecture",
+        "topic",
+        "questionType",
+        "userAnswer",
+        "isCorrect",
+        "attemptsCount",
+        "incorrectCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ExamSimulation": {
+      "title": "ExamSimulation",
+      "description": "Timed examination attempt generated from a subject's question bank.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "subjectId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "questionIds": { "type": "array" },
+        "answers": { "type": "object" },
+        "durationMinutes": { "type": "integer" },
+        "score": { "type": "number" },
+        "correctCount": { "type": "integer" },
+        "totalQuestions": { "type": "integer" },
+        "status": { "type": "string", "enum": ["in_progress", "submitted"] },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "subjectId",
+        "title",
+        "questionIds",
+        "answers",
+        "durationMinutes",
+        "score",
+        "correctCount",
+        "totalQuestions",
+        "status",
+        "startedAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private student profile documents."
+    },
+    "/subjects/{subjectId}": {
+      "schema": { "$ref": "#/entities/Subject" },
+      "description": "Course workspaces owned by individual students."
+    },
+    "/subjects/{subjectId}/materials/{materialId}": {
+      "schema": { "$ref": "#/entities/CourseMaterial" },
+      "description": "Uploaded lecture files and extracted summaries inside a subject."
+    },
+    "/subjects/{subjectId}/materials/{materialId}/chunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/MaterialChunk" },
+      "description": "Segmented extracted text chunks for each uploaded material."
+    },
+    "/subjects/{subjectId}/contentMap/{nodeId}": {
+      "schema": { "$ref": "#/entities/ContentMapNode" },
+      "description": "Course content map nodes organizing lectures, topics, definitions, and formulas."
+    },
+    "/subjects/{subjectId}/questions/{questionId}": {
+      "schema": { "$ref": "#/entities/QuestionItem" },
+      "description": "Generated and extracted questions for the subject question bank."
+    },
+    "/subjects/{subjectId}/attempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/QuestionAttempt" },
+      "description": "Student answer progress and weak-area metrics per question."
+    },
+    "/subjects/{subjectId}/exams/{examId}": {
+      "schema": { "$ref": "#/entities/ExamSimulation" },
+      "description": "Timed exam simulation sessions and submitted results."
+    }
+  }
+}

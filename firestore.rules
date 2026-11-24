@@ -1,0 +1,395 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isSubjectOwner(subjectId) {
+      return isVerifiedUser()
+        && get(/databases/$(database)/documents/subjects/$(subjectId)).data.ownerId == request.auth.uid;
+    }
+
+    function isStringList(val, maxLen) {
+      return val is list && val.size() <= maxLen && (val.size() == 0 || val[0] is string);
+    }
+
+    // --- Entity Validation Blueprints ---
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'photoUrl', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'email', 'photoUrl', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == userId && data.uid == request.auth.uid && data.uid.size() <= 128
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.photoUrl is string && data.photoUrl.size() <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSubject(data) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'courseCode', 'professorName', 'description',
+          'colorAccent', 'analysisStatus', 'analysisSummary',
+          'materialCount', 'questionCount', 'answeredCount', 'correctCount',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'name', 'courseCode', 'professorName', 'description',
+          'colorAccent', 'analysisStatus', 'analysisSummary',
+          'materialCount', 'questionCount', 'answeredCount', 'correctCount',
+          'lastStudiedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == request.auth.uid && data.ownerId.size() <= 128
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.courseCode is string && data.courseCode.size() >= 1 && data.courseCode.size() <= 32
+        && data.professorName is string && data.professorName.size() <= 100
+        && data.description is string && data.description.size() <= 500
+        && data.colorAccent is string && data.colorAccent.size() >= 1 && data.colorAccent.size() <= 32
+        && data.analysisStatus in ['idle', 'analyzing', 'completed', 'error']
+        && data.analysisSummary is string && data.analysisSummary.size() <= 2500
+        && data.materialCount is int && data.materialCount >= 0 && data.materialCount <= 5000
+        && data.questionCount is int && data.questionCount >= 0 && data.questionCount <= 50000
+        && data.answeredCount is int && data.answeredCount >= 0 && data.answeredCount <= 50000
+        && data.correctCount is int && data.correctCount >= 0 && data.correctCount <= 50000
+        && (!('lastStudiedAt' in data) || data.lastStudiedAt is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCourseMaterial(data, subjectId) {
+      return data.keys().hasAll([
+          'ownerId', 'subjectId', 'fileName', 'fileType', 'mimeType', 'fileSize',
+          'folder', 'storagePath', 'extractedCharCount', 'pageCount', 'chunkCount',
+          'ocrUsed', 'status', 'summary', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'subjectId', 'fileName', 'fileType', 'mimeType', 'fileSize',
+          'folder', 'storagePath', 'extractedCharCount', 'pageCount', 'chunkCount',
+          'ocrUsed', 'status', 'summary', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == request.auth.uid && data.ownerId.size() <= 128
+        && data.subjectId is string && data.subjectId == subjectId && data.subjectId.size() <= 128
+        && data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 255
+        && data.fileType in ['pdf', 'docx', 'pptx', 'txt', 'image']
+        && data.mimeType is string && data.mimeType.size() >= 1 && data.mimeType.size() <= 120
+        && data.fileSize is int && data.fileSize >= 0 && data.fileSize <= 104857600
+        && data.folder is string && data.folder.size() >= 1 && data.folder.size() <= 100
+        && data.storagePath is string && data.storagePath.size() <= 500
+        && data.extractedCharCount is int && data.extractedCharCount >= 0 && data.extractedCharCount <= 20000000
+        && data.pageCount is int && data.pageCount >= 0 && data.pageCount <= 10000
+        && data.chunkCount is int && data.chunkCount >= 0 && data.chunkCount <= 1000
+        && data.ocrUsed is bool
+        && data.status in ['uploaded', 'extracted', 'analyzed', 'error']
+        && data.summary is string && data.summary.size() <= 2500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMaterialChunk(data, subjectId, materialId) {
+      return data.keys().hasAll(['ownerId', 'subjectId', 'materialId', 'chunkIndex', 'pageRange', 'text', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'subjectId', 'materialId', 'chunkIndex', 'pageRange', 'text', 'createdAt'])
+        && data.ownerId is string && data.ownerId == request.auth.uid && data.ownerId.size() <= 128
+        && data.subjectId is string && data.subjectId == subjectId && data.subjectId.size() <= 128
+        && data.materialId is string && data.materialId == materialId && data.materialId.size() <= 128
+        && data.chunkIndex is int && data.chunkIndex >= 0 && data.chunkIndex <= 1000
+        && data.pageRange is string && data.pageRange.size() <= 100
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 250000
+        && data.createdAt is timestamp;
+    }
+
+    function isValidContentMapNode(data, subjectId) {
+      return data.keys().hasAll([
+          'ownerId', 'subjectId', 'lecture', 'topic', 'subtopics',
+          'definitions', 'formulas', 'examples', 'sourceFiles', 'orderIndex', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'subjectId', 'lecture', 'topic', 'subtopics',
+          'definitions', 'formulas', 'examples', 'sourceFiles', 'orderIndex', 'createdAt'
+        ])
+        && data.ownerId is string && data.ownerId == request.auth.uid && data.ownerId.size() <= 128
+        && data.subjectId is string && data.subjectId == subjectId && data.subjectId.size() <= 128
+        && data.lecture is string && data.lecture.size() >= 1 && data.lecture.size() <= 150
+        && data.topic is string && data.topic.size() >= 1 && data.topic.size() <= 200
+        && isStringList(data.subtopics, 40)
+        && isStringList(data.definitions, 40)
+        && isStringList(data.formulas, 40)
+        && isStringList(data.examples, 40)
+        && isStringList(data.sourceFiles, 30)
+        && data.orderIndex is int && data.orderIndex >= 0 && data.orderIndex <= 5000
+        && data.createdAt is timestamp;
+    }
+
+    function isValidQuestionItem(data, subjectId) {
+      return data.keys().hasAll([
+          'ownerId', 'subjectId', 'lecture', 'topic', 'type', 'difficulty',
+          'source', 'sourceRef', 'prompt', 'options', 'matchingPairs',
+          'correctAnswer', 'explanation', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'subjectId', 'lecture', 'topic', 'type', 'difficulty',
+          'source', 'sourceRef', 'prompt', 'options', 'matchingPairs',
+          'correctAnswer', 'explanation', 'figureUrl', 'figureCaption', 'createdAt'
+        ])
+        && data.ownerId is string && data.ownerId == request.auth.uid && data.ownerId.size() <= 128
+        && data.subjectId is string && data.subjectId == subjectId && data.subjectId.size() <= 128
+        && data.lecture is string && data.lecture.size() >= 1 && data.lecture.size() <= 150
+        && data.topic is string && data.topic.size() >= 1 && data.topic.size() <= 200
+        && data.type in ['mcq', 'true_false', 'complete', 'short_answer', 'essay', 'numerical', 'matching']
+        && data.difficulty in ['Easy', 'Medium', 'Hard']
+        && data.source in ['Professor', 'Lecture', 'AI Generated']
+        && data.sourceRef is string && data.sourceRef.size() >= 1 && data.sourceRef.size() <= 300
+        && data.prompt is string && data.prompt.size() >= 1 && data.prompt.size() <= 4000
+        && isStringList(data.options, 10)
+        && isStringList(data.matchingPairs, 10)
+        && data.correctAnswer is string && data.correctAnswer.size() >= 1 && data.correctAnswer.size() <= 4000
+        && data.explanation is string && data.explanation.size() >= 1 && data.explanation.size() <= 6000
+        && (!('figureUrl' in data) || (data.figureUrl is string && data.figureUrl.size() <= 500 && (data.figureUrl == '' || data.figureUrl.matches('^/api/files/[a-zA-Z0-9_%\\-]+/[a-zA-Z0-9_%\\-.]+$'))))
+        && (!('figureCaption' in data) || (data.figureCaption is string && data.figureCaption.size() <= 300))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidQuestionAttempt(data, subjectId, attemptId) {
+      return data.keys().hasAll([
+          'ownerId', 'subjectId', 'questionId', 'lecture', 'topic', 'questionType',
+          'userAnswer', 'isCorrect', 'attemptsCount', 'incorrectCount', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'subjectId', 'questionId', 'lecture', 'topic', 'questionType',
+          'userAnswer', 'isCorrect', 'attemptsCount', 'incorrectCount', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == request.auth.uid && data.ownerId.size() <= 128
+        && data.subjectId is string && data.subjectId == subjectId && data.subjectId.size() <= 128
+        && data.questionId is string && data.questionId == attemptId && data.questionId.size() <= 128
+        && data.lecture is string && data.lecture.size() >= 1 && data.lecture.size() <= 150
+        && data.topic is string && data.topic.size() >= 1 && data.topic.size() <= 200
+        && data.questionType is string && data.questionType.size() >= 1 && data.questionType.size() <= 40
+        && data.userAnswer is string && data.userAnswer.size() <= 4000
+        && data.isCorrect is bool
+        && data.attemptsCount is int && data.attemptsCount >= 1 && data.attemptsCount <= 10000
+        && data.incorrectCount is int && data.incorrectCount >= 0 && data.incorrectCount <= 10000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidExamSimulation(data, subjectId) {
+      return data.keys().hasAll([
+          'ownerId', 'subjectId', 'title', 'questionIds', 'answers',
+          'durationMinutes', 'score', 'correctCount', 'totalQuestions',
+          'status', 'startedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'subjectId', 'title', 'questionIds', 'answers',
+          'durationMinutes', 'score', 'correctCount', 'totalQuestions',
+          'status', 'startedAt', 'submittedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == request.auth.uid && data.ownerId.size() <= 128
+        && data.subjectId is string && data.subjectId == subjectId && data.subjectId.size() <= 128
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 150
+        && data.questionIds is list && data.questionIds.size() >= 1 && data.questionIds.size() <= 200 && data.questionIds[0] is string
+        && data.answers is map && data.answers.size() <= 200
+        && data.durationMinutes is int && data.durationMinutes >= 1 && data.durationMinutes <= 300
+        && data.score is number && data.score >= 0 && data.score <= 100
+        && data.correctCount is int && data.correctCount >= 0 && data.correctCount <= 200
+        && data.totalQuestions is int && data.totalQuestions >= 1 && data.totalQuestions <= 200
+        && data.status in ['in_progress', 'submitted']
+        && data.startedAt is timestamp
+        && (!('submittedAt' in data) || data.submittedAt is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoUrl', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /subjects/{subjectId} {
+      allow get: if isValidId(subjectId) && isVerifiedUser() && existing().ownerId == request.auth.uid;
+      allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isValidId(subjectId)
+        && isVerifiedUser()
+        && isValidSubject(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(subjectId)
+        && isVerifiedUser()
+        && existing().ownerId == request.auth.uid
+        && isValidSubject(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'courseCode', 'professorName', 'description', 'colorAccent', 'updatedAt'])
+          || incoming().diff(existing()).affectedKeys().hasOnly(['analysisStatus', 'analysisSummary', 'questionCount', 'materialCount', 'updatedAt'])
+          || incoming().diff(existing()).affectedKeys().hasOnly(['answeredCount', 'correctCount', 'lastStudiedAt', 'updatedAt'])
+          || incoming().diff(existing()).affectedKeys().hasOnly(['materialCount', 'updatedAt'])
+        );
+      allow delete: if isValidId(subjectId) && isVerifiedUser() && existing().ownerId == request.auth.uid;
+
+      match /materials/{materialId} {
+        allow get: if isValidId(subjectId) && isValidId(materialId) && isVerifiedUser() && existing().ownerId == request.auth.uid;
+        allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(subjectId)
+          && isValidId(materialId)
+          && isVerifiedUser()
+          && isValidCourseMaterial(incoming(), subjectId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && isSubjectOwner(subjectId);
+        allow update: if isValidId(subjectId)
+          && isValidId(materialId)
+          && isVerifiedUser()
+          && existing().ownerId == request.auth.uid
+          && isValidCourseMaterial(incoming(), subjectId)
+          && isSubjectOwner(subjectId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().subjectId == existing().subjectId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly(['folder', 'fileName', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['status', 'summary', 'extractedCharCount', 'pageCount', 'chunkCount', 'ocrUsed', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['fileName', 'fileType', 'mimeType', 'fileSize', 'storagePath', 'extractedCharCount', 'pageCount', 'chunkCount', 'ocrUsed', 'status', 'summary', 'updatedAt'])
+          );
+        allow delete: if isValidId(subjectId) && isValidId(materialId) && isVerifiedUser() && existing().ownerId == request.auth.uid && isSubjectOwner(subjectId);
+
+        match /chunks/{chunkId} {
+          allow get: if isValidId(subjectId) && isValidId(materialId) && isValidId(chunkId) && isVerifiedUser() && existing().ownerId == request.auth.uid;
+          allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+          allow create: if isValidId(subjectId)
+            && isValidId(materialId)
+            && isValidId(chunkId)
+            && isVerifiedUser()
+            && isValidMaterialChunk(incoming(), subjectId, materialId)
+            && incoming().createdAt == request.time
+            && isSubjectOwner(subjectId);
+          allow update: if false;
+          allow delete: if isValidId(subjectId) && isValidId(materialId) && isValidId(chunkId) && isVerifiedUser() && existing().ownerId == request.auth.uid && isSubjectOwner(subjectId);
+        }
+      }
+
+      match /contentMap/{nodeId} {
+        allow get: if isValidId(subjectId) && isValidId(nodeId) && isVerifiedUser() && existing().ownerId == request.auth.uid;
+        allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(subjectId)
+          && isValidId(nodeId)
+          && isVerifiedUser()
+          && isValidContentMapNode(incoming(), subjectId)
+          && incoming().createdAt == request.time
+          && isSubjectOwner(subjectId);
+        allow update: if false;
+        allow delete: if isValidId(subjectId) && isValidId(nodeId) && isVerifiedUser() && existing().ownerId == request.auth.uid && isSubjectOwner(subjectId);
+      }
+
+      match /questions/{questionId} {
+        allow get: if isValidId(subjectId) && isValidId(questionId) && isVerifiedUser() && existing().ownerId == request.auth.uid;
+        allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(subjectId)
+          && isValidId(questionId)
+          && isVerifiedUser()
+          && isValidQuestionItem(incoming(), subjectId)
+          && incoming().createdAt == request.time
+          && isSubjectOwner(subjectId);
+        allow update: if false;
+        allow delete: if isValidId(subjectId) && isValidId(questionId) && isVerifiedUser() && existing().ownerId == request.auth.uid && isSubjectOwner(subjectId);
+      }
+
+      match /attempts/{attemptId} {
+        allow get: if isValidId(subjectId) && isValidId(attemptId) && isVerifiedUser() && existing().ownerId == request.auth.uid;
+        allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(subjectId)
+          && isValidId(attemptId)
+          && isVerifiedUser()
+          && isValidQuestionAttempt(incoming(), subjectId, attemptId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && isSubjectOwner(subjectId);
+        allow update: if isValidId(subjectId)
+          && isValidId(attemptId)
+          && isVerifiedUser()
+          && existing().ownerId == request.auth.uid
+          && isValidQuestionAttempt(incoming(), subjectId, attemptId)
+          && isSubjectOwner(subjectId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().subjectId == existing().subjectId
+          && incoming().questionId == existing().questionId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['userAnswer', 'isCorrect', 'attemptsCount', 'incorrectCount', 'updatedAt']);
+        allow delete: if isValidId(subjectId) && isValidId(attemptId) && isVerifiedUser() && existing().ownerId == request.auth.uid && isSubjectOwner(subjectId);
+      }
+
+      match /exams/{examId} {
+        allow get: if isValidId(subjectId) && isValidId(examId) && isVerifiedUser() && existing().ownerId == request.auth.uid;
+        allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(subjectId)
+          && isValidId(examId)
+          && isVerifiedUser()
+          && isValidExamSimulation(incoming(), subjectId)
+          && incoming().status == 'in_progress'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && incoming().startedAt == request.time
+          && isSubjectOwner(subjectId);
+        allow update: if isValidId(subjectId)
+          && isValidId(examId)
+          && isVerifiedUser()
+          && existing().ownerId == request.auth.uid
+          && existing().status == 'in_progress'
+          && isValidExamSimulation(incoming(), subjectId)
+          && isSubjectOwner(subjectId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().subjectId == existing().subjectId
+          && incoming().startedAt == existing().startedAt
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            (incoming().status == 'in_progress' && incoming().diff(existing()).affectedKeys().hasOnly(['answers', 'updatedAt']))
+            || (incoming().status == 'submitted' && incoming().diff(existing()).affectedKeys().hasOnly(['answers', 'score', 'correctCount', 'status', 'submittedAt', 'updatedAt']))
+          );
+        allow delete: if isValidId(subjectId) && isValidId(examId) && isVerifiedUser() && existing().ownerId == request.auth.uid && isSubjectOwner(subjectId);
+      }
+    }
+  }
+}
